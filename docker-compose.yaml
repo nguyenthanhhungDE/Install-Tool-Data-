@@ -1,0 +1,91 @@
+version: "3.9"
+
+services:
+
+
+  de_psql:
+    image: postgres:14-alpine
+    container_name: de_psql
+    hostname: de_psql
+    volumes:
+      - postgres_data_h:/var/lib/postgresql/data
+      - ./pg_hba.conf:/tmp/pg_hba.conf
+      # - ./load_dataset:/tmp/load_dataset
+    command: ["postgres", "-c", "hba_file=/tmp/pg_hba.conf"]
+    expose:
+      - "5432"
+    ports:
+      - "5432:5432"
+    env_file: .env
+    networks:
+      - data_network
+  
+  de_dagster_dagit:
+    build:
+      context: ./docker_image/dagster
+      dockerfile: Dockerfile
+    entrypoint:
+      - dagit
+      - -h
+      - "0.0.0.0"
+      - -p
+      - "3001"
+      - -w
+      - workspace.yaml
+    container_name: de_dagster_dagit
+    ports:
+      - "3001:3001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./dagster_home:/opt/dagster/dagster_home
+    env_file:
+      - .env
+    networks:
+      - data_network
+    depends_on:
+      - de_psql
+
+  de_dagster_daemon:
+    build:
+      context: ./docker_image/dagster
+      dockerfile: Dockerfile
+    entrypoint:
+      - dagster-daemon
+      - run
+    container_name: de_dagster_daemon
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./dagster_home:/opt/dagster/dagster_home
+    env_file:
+      - .env
+    networks:
+      - data_network
+    depends_on:
+      - de_psql
+
+  etl_pipeline:
+    build:
+      context: ./etl_pipeline
+      dockerfile: Dockerfile
+    container_name: etl_pipeline
+    image: etl_pipeline:latest
+    user: root
+    volumes:
+      - ./etl_pipeline:/opt/dagster/app/etl_pipeline
+    env_file:
+      - .env
+    expose:
+      - "4000"
+    networks:
+      - data_network
+
+networks:
+  data_network:
+    driver: bridge
+    name: data_network
+
+
+volumes:
+  postgres_data_h: {}
+
+  # metabasedata: {}
